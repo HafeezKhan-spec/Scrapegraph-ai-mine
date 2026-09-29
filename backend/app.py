@@ -2,7 +2,9 @@
 FastAPI backend for ScrapeGraphAI
 """
 
+import asyncio
 import os
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
@@ -10,6 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from scrapegraphai.graphs import SmartScraperGraph
+
+executor = ThreadPoolExecutor(max_workers=4)
 
 app = FastAPI(
     title="ScrapeGraphAI API",
@@ -59,30 +63,38 @@ async def health():
     return {"status": "healthy"}
 
 
+def run_scraper(url: str, prompt: str, model_tokens: int) -> dict:
+    """Run the scraper in a separate thread to avoid event loop conflicts."""
+    graph_config = {
+        "llm": {
+            "api_key": NVIDIA_API_KEY,
+            "model": f"openai/{NVIDIA_MODEL}",
+            "base_url": NVIDIA_BASE_URL,
+            "model_tokens": model_tokens,
+        },
+        "verbose": True,
+        "headless": True,
+    }
+
+    smart_scraper_graph = SmartScraperGraph(
+        prompt=prompt,
+        source=url,
+        config=graph_config,
+    )
+
+    return smart_scraper_graph.run()
+
+
 @app.post("/scrape", response_model=ScrapeResponse)
 async def scrape(request: ScrapeRequest):
     """
     Scrape a website using ScrapeGraphAI with NVIDIA LLM
     """
     try:
-        graph_config = {
-            "llm": {
-                "api_key": NVIDIA_API_KEY,
-                "model": f"openai/{NVIDIA_MODEL}",
-                "base_url": NVIDIA_BASE_URL,
-                "model_tokens": request.model_tokens,
-            },
-            "verbose": True,
-            "headless": True,
-        }
-
-        smart_scraper_graph = SmartScraperGraph(
-            prompt=request.prompt,
-            source=request.url,
-            config=graph_config,
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            executor, run_scraper, request.url, request.prompt, request.model_tokens
         )
-
-        result = smart_scraper_graph.run()
 
         return ScrapeResponse(success=True, data=result)
 

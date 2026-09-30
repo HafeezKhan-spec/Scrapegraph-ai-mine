@@ -74,6 +74,11 @@ def run_scraper(url: str, prompt: str, model_tokens: int) -> dict:
         },
         "verbose": True,
         "headless": True,
+        "browser_type": "chromium",
+        "loader_kwargs": {
+            "headless": True,
+            "slow_mo": 500,
+        },
     }
 
     smart_scraper_graph = SmartScraperGraph(
